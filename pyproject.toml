@@ -1,0 +1,20 @@
+[project]
+name = "sql-mastery"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Dilan Çiçek", email = "dilancicek335@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "faker>=40.38.0",
+    "numpy>=2.5.3",
+]
+
+[project.scripts]
+sql-mastery = "sql_mastery:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
