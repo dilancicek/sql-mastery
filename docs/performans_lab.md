@@ -272,3 +272,26 @@ Execution Time: 0.152 ms
 Aritmetik işlem sabit değerin üzerine kaydırıldığında, Query Planner işlemi önceden hesaplayıp (Constant Folding) aranan değeri sabitler. Kolon serbest kaldığı için indeks başarıyla devreye girmiş (`Index Scan`) ve sorgu süresi 36.8 ms'den muazzam bir düşüşle **0.152 ms**'ye inmiştir.
 
 ---
+
+## 6. Performans Özeti ve Hızlanma Oranları Tablosu
+
+Aşağıdaki tablo, 5 farklı senaryoda kasten kötü yazılmış sorguların optimizasyon öncesi ve sonrası çalışma sürelerini ile hızlanma çarpanlarını özetlemektedir.
+
+| Senaryo | Kötü Pratik (Hata) | Öncesi Süre | Sonrası Süre | Hızlanma Çarpanı |
+| :--- | :--- | :--- | :--- | :--- |
+| **Senaryo 1** | Kolona Fonksiyon Uygulama (`EXTRACT`) | 44.234 ms | 0.134 ms | **~330x Daha Hızlı** |
+| **Senaryo 2** | Baştaki Yüzde İşareti (`LIKE '%...'`) | 13.185 ms | 0.410 ms | **~32x Daha Hızlı** |
+| **Senaryo 3** | `OR` Operatörü Kullanımı | 28.946 ms | 22.165 ms | **~1.3x Daha Hızlı** |
+| **Senaryo 4** | Tip Uyuşmazlığı (Implicit Cast) | 23.055 ms | Başarısız | **İndeks Devre Dışı Kaldı** |
+| **Senaryo 5** | Kolon Üzerinde Matematiksel İşlem | 36.844 ms | 0.152 ms | **~242x Daha Hızlı** |
+
+---
+
+## 7. İndeksin İşe Yaramadığı Örnek Durumlar (Anti-Pattern)
+
+Görev yönergesinde belirtilen kısıtlamalar doğrultusunda, bir kolonda indeks bulunmasına rağmen veritabanı motorunun indeksi kullanamayıp (Full Table Scan) tüm tabloyu taramak zorunda kaldığı iki kritik senaryo ve teknik açıklamaları aşağıdadır[cite: 2]:
+
+*   **Örnek 1: Tip Uyuşmazlığı (Type Mismatch) ve Gizli Dönüşüm**
+    Sorgu sırasında aranan parametrenin veri tipi ile tablodaki kolonun veri tipi eşleşmediğinde indeks geçersiz kalır. Örneğin; fiziksel olarak `VARCHAR` tasarlanmış bir `user_id` kolonuna, sorguda `WHERE user_id = 105` (integer) şeklinde değer gönderildiğinde, PostgreSQL arka planda tüm tabloyu okuyarak metinleri sayıya çevirmeye (implicit cast) çalışır. Bu tip uyuşmazlığı, B-Tree yapısını tamamen kör eder.
+*   **Örnek 2: Leading Wildcard (Baştaki Yüzde İşareti) Kullanımı**
+    Metin tabanlı (`LIKE`) aramalarda parametrenin başına `%` işareti konulması (örn: `%Mehmet%`), standart B-Tree indekslerinin çalışmasını engeller. B-Tree indeksleri veriyi soldan sağa alfabetik sıralayarak bulur. Baştaki karakterin ne olduğu bilinmediğinde (joker karakter kullanıldığında), veritabanı arama ağacına nereden gireceğini bilemez ve mecburen tablonun tamamını satır satır okumak (Seq Scan) zorunda kalır.
