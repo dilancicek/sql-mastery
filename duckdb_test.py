@@ -1,9 +1,10 @@
-import duckdb
-import pandas as pd
-import time
-import tracemalloc
 import gc
 import os
+import time
+import tracemalloc
+
+import duckdb
+import pandas as pd
 import requests
 
 FILE_NAME = "yellow_tripdata_2024-01.parquet"
