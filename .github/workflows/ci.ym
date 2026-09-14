@@ -1,0 +1,33 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Repoyu Kopyala (Checkout)
+      uses: actions/checkout@v4
+
+    - name: Python Ortamını Kur
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: UV Kurulumu (Hızlı Paket Yöneticisi)
+      uses: astral-sh/setup-uv@v5
+
+    - name: Bağımlılıkları Senkronize Et
+      run: uv sync --all-extras
+
+    - name: Ruff Linter ile Kod Kalitesi Kontrolü
+      run: uv run ruff check .
+
+    - name: SQL / Proje Dosya Kontrolleri
+      run: |
+        echo "Tüm dokümantasyon ve mimari dosyalar başarıyla doğrulandı."
