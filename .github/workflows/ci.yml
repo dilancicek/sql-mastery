@@ -26,7 +26,7 @@ jobs:
       run: uv sync --all-extras
 
     - name: Ruff Linter ile Kod Kalitesi Kontrolü
-      run: uv run ruff check .
+      run: uvx ruff check .
 
     - name: SQL / Proje Dosya Kontrolleri
       run: |
