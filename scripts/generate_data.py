@@ -1,9 +1,10 @@
 import csv
-import random
 import os
-from datetime import datetime, timedelta
-from faker import Faker
+import random
+from datetime import datetime
+
 import numpy as np
+from faker import Faker
 
 # Türkçe veriler için Faker'ı ayarlayalım
 fake = Faker('tr_TR')
@@ -59,16 +60,19 @@ with open('data/orders.csv', 'w', newline='', encoding='utf-8') as f:
         if random.random() < 0.3:
             month = random.choice([11, 12])
             year = random.choice([2024, 2025])
-            created_at = fake.date_time_between_dates(datetime(year, month, 1), datetime(year, month, 28))
+            created_at = fake.date_time_between_dates(datetime(year, month, 1), datetime(year, month, 28))  # noqa: DTZ001
         else:
             created_at = fake.date_time_between(start_date='-2y', end_date='now')
-            
-        # %2 İade (return) oranı
+
+        # %2 iade (return) oranı
         status_chance = random.random()
-        if status_chance < 0.02: status = 'returned'
-        elif status_chance < 0.05: status = 'cancelled'
-        else: status = 'completed'
-        
+        if status_chance < 0.02:
+            status = 'returned'
+        elif status_chance < 0.05:
+            status = 'cancelled'
+        else:
+            status = 'completed'
+
         user_id = random.randint(1, NUM_USERS)
         writer.writerow([i, user_id, '', 0, status, created_at])
         orders.append(i)
@@ -92,4 +96,4 @@ with open('data/order_items.csv', 'w', newline='', encoding='utf-8') as f:
             writer.writerow([item_id, order_id, prod_id, qty, round(random.uniform(10.0, 500.0), 2)])
             item_id += 1
 
-print(f"🎉 İşlem Tamamlandı! Tüm CSV dosyaları 'data' klasörüne kaydedildi. Toplam satır sayısı ~500.000'i aştı.")
+print("🎉 İşlem Tamamlandı! Tüm CSV dosyaları 'data' klasörüne kaydedildi. Toplam satır sayısı ~500.000'i aştı.")
