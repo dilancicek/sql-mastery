@@ -78,3 +78,64 @@ PostgreSQL (DBeaver) üzerinde gerçekleştirilen milisaniye bazlı gerçek yür
 
 ### C) Genel Değerlendirme
 Test sonuçlarından da net bir şekilde görüleceği üzere; özellikle çoklu JOIN gerektiren, gruplama yapılan ve pencere fonksiyonları (`Window Functions`) içeren karmaşık analitik sorgularda Star Schema mimarisi, OLTP sistemine kıyasla **3.5 kattan 275 kata varan** oranlarda üstün performans göstermiştir.
+
+## 4. Performans Doğrulaması ve Execution Plan Analizi (Ek Değerlendirme)
+
+### 4.1. Veri Yükleme (ETL) ve Satır Sayısı Doğrulaması
+İlk testlerde tespit edilen aşırı düşük sorgu sürelerinin (4-7 ms) veri eksikliğinden kaynaklanmadığını ve ETL işleminin başarılı olduğunu doğrulamak için OLTP ile Star Schema satır sayıları karşılaştırılmıştır:
+
+```sql
+-- OLTP Tabloları
+SELECT COUNT(*) FROM orders;          -- Sonuç: 150.000
+SELECT COUNT(*) FROM order_items;     -- Sonuç: 375.684
+
+-- Star Schema (Fact) Tabloları
+SELECT COUNT(*) FROM fct_orders;      -- Sonuç: 150.000
+SELECT COUNT(*) FROM fct_order_items; -- Sonuç: 375.684
+```
+
+**Bulgu:** `fct_orders` ve `fct_order_items` tablolarındaki satır sayıları OLTP kaynağıyla birebir eşleşmektedir. Testler veri kümelerinin alt parçalarında (subset) veya boş tablolar üzerinde değil, %100 tam veri seti üzerinde gerçekleştirilmiştir.
+
+### 4.2. Gerçek Yük Altında Sorgu Analizi ve Bellek (Buffer) Metrikleri
+DBeaver'ın gösterdiği istemci (client) arayüz gecikmelerinden arındırılmış, sunucu tarafındaki gerçek iş yükünü ve okunan sayfa (page) sayısını ölçmek için `EXPLAIN (ANALYZE, BUFFERS)` kullanılmıştır.
+
+**Test Sorgusu:** Son 3 aylık iptal edilen siparişlerin günlük bazda cirosu
+
+```sql
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT 
+    d.full_date,
+    SUM(f.total_amount) as daily_cancelled_revenue
+FROM fct_orders f
+JOIN dim_date d ON f.date_sk = d.date_sk
+WHERE f.order_status = 'cancelled' 
+  AND d.full_date >= '2024-06-08'
+GROUP BY d.full_date
+ORDER BY d.full_date DESC;
+```
+
+**Execution Plan Çıktısı (Özet):**
+```text
+Sort (cost=3081.33..3083.15 rows=731 width=36) (actual time=26.762..26.804 rows=724 loops=1)
+  Sort Key: d.full_date DESC
+  Sort Method: quicksort  Memory: 47kB
+  Buffers: shared hit=1112
+  -> HashAggregate  (cost=3037.42..3046.55 rows=731 width=36) (actual time=26.249..26.446 rows=724 loops=1)
+        Group Key: d.full_date
+        Batches: 1  Memory Usage: 297kB
+        Buffers: shared hit=1109
+        -> Hash Join  (cost=24.28..3014.42 rows=4600 width=7) (actual time=0.466..23.324 rows=4406 loops=1)
+              Hash Cond: (f.date_sk = d.date_sk)
+              Buffers: shared hit=1109
+              -> Seq Scan on fct_orders f  (cost=0.00..2978.00 rows=4600 width=7) (actual time=0.032..21.124 rows=4406 loops=1)
+                    Filter: ((order_status)::text = 'cancelled'::text)
+                    Rows Removed by Filter: 145594
+                    Buffers: shared hit=1103
+Planning Time: 71.528 ms
+Execution Time: 27.315 ms
+```
+
+### 4.3. Mühendislik Çıkarımları
+* **Filtreleme ve İş Yükü:** Sorgu boş bir tabloyu değil, 150.000 kayıtlık tabloyu taramış ve iptal edilmeyen 145.594 kaydı başarıyla filtrelemiştir (`Rows Removed by Filter: 145594`).
+* **Execution Time (Gerçek Süre):** İşlemin saf veritabanı yürütme süresi **27.3 ms** olarak ölçülmüştür.
+* **Buffer (Bellek) Tüketimi:** Star Schema üzerinde gerçekleştirilen bu analiz için toplamda yalnızca **1112 sayfa (shared hit=1112)** bellekten okunmuştur. Disk okuması (read) yapılmamış, veri doğrudan RAM üzerinden hızlıca getirilmiştir. Bu düşük buffer sayısı, mimarinin analitik okumalar için yüksek oranda optimize edildiğinin en büyük fiziksel kanıtıdır.

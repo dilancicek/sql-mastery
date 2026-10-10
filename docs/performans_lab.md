@@ -2,54 +2,61 @@
 
 ## Senaryo 1: Fonksiyon Uygulanmış Kolon (Kötü Pratik)
 
+*Not: Kıyaslamanın adil ve dürüst olması için her iki sorgunun da veritabanında aynı sonuç kümesini (Mayıs 2025 dönemine ait 4.366 satırı) getirdiği doğrulanarak `rows=4366` eşitliği üzerinden test edilmiştir.*
+
 **Kasten Kötü Yazılmış Sorgu:**
-`created_at` kolonuna `EXTRACT()` fonksiyonu uygulayarak veritabanını tüm tabloyu okumaya (Seq Scan) zorluyoruz.
+`created_at` kolonuna `EXTRACT()` fonksiyonu uygulayarak veritabanını tüm tabloyu okumaya zorluyoruz.
 
 ```sql
 EXPLAIN ANALYZE 
-SELECT * 
+SELECT *
 FROM orders 
-WHERE EXTRACT(MONTH FROM created_at) = 5;
+WHERE EXTRACT(YEAR FROM created_at) = 2025 
+  AND EXTRACT(MONTH FROM created_at) = 5;
 ```
 
 **EXPLAIN ANALYZE Çıktısı (Röntgen):**
 ```text
-Seq Scan on orders (cost=0.00..3402.00 rows=750 width=32) (actual time=0.108..43.624 rows=8907 loops=1)
-  Filter: (EXTRACT(month FROM created_at) = '5'::numeric)
-  Rows Removed by Filter: 141093
-Planning Time: 0.593 ms
-Execution Time: 44.234 ms
+Gather  (cost=1000.00..3917.11 rows=4 width=32) (actual time=1.197..46.719 rows=4366 loops=1)
+  Workers Planned: 1
+  Workers Launched: 1
+  ->  Parallel Seq Scan on orders  (cost=0.00..2916.71 rows=2 width=32) (actual time=0.037..37.331 rows=2183 loops=2)
+        Filter: ((EXTRACT(year FROM created_at) = '2025'::numeric) AND (EXTRACT(month FROM created_at) = '5'::numeric))
+        Rows Removed by Filter: 72817
+Planning Time: 0.200 ms
+Execution Time: 47.006 ms
 ```
 
 **Teşhis ve Analiz:**
-Sorgu planında açıkça görüldüğü üzere `Seq Scan` (Sıralı Tarama) yapılmıştır. Veritabanı sadece 8.907 satırlık sonucu bulabilmek için tam **141.093 satırı gereksiz yere okuyup filtrelemek (Rows Removed by Filter) zorunda kalmıştır**. `WHERE` bloğunda kolona bir fonksiyon uygulandığı için veritabanı mevcut indeksleri kullanamayıp "kör" olmuştur.
+Sorgu planında açıkça görüldüğü üzere `Parallel Seq Scan` (Tam Tablo Taraması) yapılmıştır. `WHERE` bloğunda kolona fonksiyon uygulandığı için veritabanı mevcut indeksleri kullanamamış ("kör" olmuş) ve maliyetli bir tarama yapmıştır.
 
 ---
 
 **Optimize Edilmiş Sorgu ve İndeksleme (Doğru Pratik):**
-Sorguyu `EXTRACT` fonksiyonundan kurtarıp net bir tarih aralığı (range) koşuluna (`SARGable` format) çevirdik ve `created_at` kolonu üzerine bir indeks ekledik.
+Sorguyu `EXTRACT` fonksiyonundan kurtarıp net bir tarih aralığı (range) koşuluna (`SARGable` format) çevirdik.
 
 ```sql
--- 1. İndeks Oluşturma
-CREATE INDEX idx_orders_created_at ON orders(created_at);
+-- İndeks zaten mevcut: CREATE INDEX idx_orders_created_at ON orders(created_at);
 
--- 2. Optimize Sorgu
 EXPLAIN ANALYZE 
-SELECT * 
+SELECT *
 FROM orders 
-WHERE created_at >= '2024-05-01' AND created_at < '2024-06-01';
+WHERE created_at >= '2025-05-01' AND created_at < '2025-06-01';
 ```
 
 **EXPLAIN ANALYZE Çıktısı (Röntgen):**
 ```text
-Index Scan using idx_orders_created_at on orders  (cost=0.42..8.44 rows=1 width=32) (actual time=0.064..0.064 rows=0 loops=1)
-  Index Cond: ((created_at >= '2024-05-01 00:00:00'::timestamp without time zone) AND (created_at < '2024-06-01 00:00:00'::timestamp without time zone))
-Planning Time: 1.389 ms
-Execution Time: 0.134 ms
+Bitmap Heap Scan on orders  (cost=91.71..1307.05 rows=4223 width=32) (actual time=3.805..18.249 rows=4366 loops=1)
+  Recheck Cond: ((created_at >= '2025-05-01 00:00:00'::timestamp without time zone) AND (created_at < '2025-06-01 00:00:00'::timestamp without time zone))
+  Heap Blocks: exact=1076
+  ->  Bitmap Index Scan on idx_orders_created_at  (cost=0.00..90.65 rows=4223 width=0) (actual time=3.605..3.605 rows=4366 loops=1)
+        Index Cond: ((created_at >= '2025-05-01 00:00:00'::timestamp without time zone) AND (created_at < '2025-06-01 00:00:00'::timestamp without time zone))
+Planning Time: 0.464 ms
+Execution Time: 18.603 ms
 ```
 
 **Tedavi ve Sonuç:**
-Kötü yazılmış sorgudaki `Seq Scan` (Sıralı Tarama), sorgunun `SARGable` (Search Argument Able) formata getirilmesi ve ilgili kolona indeks eklenmesiyle **`Index Scan`**'e dönüşmüştür. Veritabanı 150.000 satırı okuyup filtrelemekten kurtulmuş, çalışma süresi 44.2 ms'den **0.134 ms**'ye düşerek muazzam bir hız (yaklaşık 330 kat) elde edilmiştir.
+Sorgunun `SARGable` formata getirilmesiyle veritabanı indeks kullanabilmiştir. Veri seti tablonun yaklaşık %2.9'unu kapsadığı için PostgreSQL, standart bir Index Scan yerine daha maliyet-efektif olan **Bitmap Index Scan** yöntemini seçmiştir. Her iki sorgu da tam olarak 4.366 satır getirmesine rağmen, aralık araması yapan sorgu **18.6 ms** sürede tamamlanarak yaklaşık **2.5 kat daha hızlı** çalışmıştır.
 
 ---
 

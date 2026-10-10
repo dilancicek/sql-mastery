@@ -79,3 +79,4 @@ make install
 
 # Veritabanını kur, migration'ları çalıştır ve tohum (seed) verileri yükle
 make seed
+```

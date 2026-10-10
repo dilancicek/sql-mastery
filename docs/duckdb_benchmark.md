@@ -1,22 +1,28 @@
-# Görev 3.5: DuckDB ve Pandas Performans ve Bellek Analizi
+# DuckDB vs Pandas Performans Analizi
 
-Bu doküman, veri analitiğinde sunucusuz çalışan DuckDB ile bellek tabanlı çalışan Pandas kütüphanelerinin performans ve RAM kullanım karşılaştırmasını içermektedir.
+Bu testte 1 aylik NYC Yellow Taxi verisi (yaklasik 3 milyon satir) uzerinde 10 farkli analitik is sorgusu calistirilmistir.
 
-## 1. Test Ortamı ve Veri
-Test, NYC Taxi veri setinin Ocak 2024 Parquet dosyası üzerinde gerçekleştirilmiştir. Görev yönergesinde belirtilen "bir ay, ~3 GB" veri hacmi[cite: 1], modern Parquet sıkıştırması sayesinde diskte ~50 MB yer kaplamaktadır. Ancak bellek (RAM) testleri, verinin işlenmesi sırasındaki gerçek kaynak tüketimini ortaya koymuştur.
+## 1. Donanim ve Olcum Kriterleri
+* RAM olcumleri isletim sistemi seviyesinde (psutil/peak_wset) yapilmistir.
+* DuckDB veriyi diskten okuyup islerken, Pandas tum veriyi RAM'e alarak islemistir.
+* Adil kiyaslama icin DuckDB sorgulari ayri ayri calistirilmis ve sonuclar fetchall() ile bellege cekilmistir.
 
-## 2. Performans ve Bellek (RAM) Karşılaştırması
-Her iki araçla da aynı analitik işlemler yapılmış ve aşağıdaki sonuçlar elde edilmiştir:
+## 2. Genel Performans Sonuclari
+* **DuckDB:** Sure: 0.59 sn | Zirve RAM: 113.86 MB
+* **Pandas:** Sure: 4.27 sn | Zirve RAM: 1374.74 MB
+* **Sonuc:** DuckDB 7.2x daha hizli calismis ve Pandas 12.1x daha fazla RAM tuketmistir.
 
-*   **DuckDB Süre:** 0.3731 saniye
-*   **DuckDB Bellek (RAM):** 0.01 MB
-*   **Pandas Süre:** 6.9533 saniye
-*   **Pandas Bellek (RAM):** 762.53 MB
+## 3. Analitik Sorgular ve Is Yorumlari (Bulgular)
 
-**Analiz:** DuckDB, Pandas'a göre **18.6 kat daha hızlı** çalışmıştır. En çarpıcı fark ise bellek tüketimindedir; Pandas veriyi RAM'e yüklemek zorunda olduğu için DuckDB'den **58.645 kat daha fazla RAM** (762.53 MB) tüketmiştir.
-
-## 3. DuckDB ile 10 Analitik İş Sorgusu
-DuckDB kullanılarak, sunucu kurulumuna gerek kalmadan doğrudan dosya üzerinden 10 farklı iş sorusu (gruplama, tarih filtreleme, koşullu sayım vb.) tek bir işlem bloğunda başarıyla ve saniyeler altında çalıştırılmıştır[cite: 1].
-
-## 4. Sonuç ve Mühendislik Kararı
-Büyük veri setleri ile çalışırken Pandas'ın RAM sınırlarına takılması kaçınılmazdır. DuckDB'nin disk tabanlı, kolon odaklı (columnar) yapısı, bellek taşmalarını (Out of Memory) önlerken hızı da maksimize etmektedir.
+| # | Sorgu Amaci | Is Yorumu (Bulgu) |
+|---|---|---|
+| 1 | Yolcu sayisina gore ortalama bahsis | Yolcu sayisi arttikca bahsis miktarinda dogrusal bir artis gozlemlenmemistir. |
+| 2 | Gunluk toplam yolculuk sayisi | Hafta sonlari ve tatil gunlerinde yolculuk taleplerinde belirgin dalgalanmalar vardir. |
+| 3 | Odeme tipine gore islem sayisi | Kredi karti kullanimi nakit odemeye gore acik ara onde olup ana odeme yontemidir. |
+| 4 | Saatlik talep yogunlugu | Sabah is giris ve aksam is cikis saatlerinde (rush hour) talep zirve yapmaktadir. |
+| 5 | Kisa mesafelerde ortalama ucret | 20 mil altindaki yolculuklarda mesafe ile ucret korelasyonu yuksektir. |
+| 6 | Saglayici (Vendor) pazar payi | Pazardaki iki ana saglayicidan birinin islem hacmi digerine gore daha fazladir. |
+| 7 | Yolcusuz ama yuksek ucretli kayitlar | Sifir yolcu gorunmesine ragmen 50$ uzeri ucret kesilen anomali (hatali) kayitlar tespit edilmistir. |
+| 8 | JFK Havalimani ortalama ucreti | Havalimani (RatecodeID=2) tarifesinde sabit ucret politikasinin uygulandigi dogrulanmistir. |
+| 9 | Sifir bahsis oraninin tespiti | Nakit odemelerde bahsis sisteme girilmedigi icin sifir bahsis orani suni olarak yuksek cikmaktadir. |
+| 10 | Max mesafe ve min ucret kontrolu | Veri setinde eksi (negatif) ucretli iade kayitlari ve asiri yuksek mesafeli outlier'lar bulunmaktadir. |
