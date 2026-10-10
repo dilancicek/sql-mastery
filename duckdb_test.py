@@ -1,10 +1,10 @@
 import gc
 import os
 import time
-import psutil  # İşletim sistemi seviyesinde gerçek RAM ölçümü için (Windows/Linux uyumlu)
 
 import duckdb
 import pandas as pd
+import psutil  # İşletim sistemi seviyesinde gerçek RAM ölçümü için (Windows/Linux uyumlu)
 import requests
 
 FILE_NAME = "yellow_tripdata_2024-01.parquet"

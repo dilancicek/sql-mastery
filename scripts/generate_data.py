@@ -60,7 +60,7 @@ with open('data/orders.csv', 'w', newline='', encoding='utf-8') as f:
         if random.random() < 0.3:
             month = random.choice([11, 12])
             year = random.choice([2024, 2025])
-            created_at = fake.date_time_between_dates(datetime(year, month, 1), datetime(year, month, 28))  # noqa: DTZ001
+            created_at = fake.date_time_between_dates(datetime(year, month, 1), datetime(year, month, 28))
         else:
             created_at = fake.date_time_between(start_date='-2y', end_date='now')
 
